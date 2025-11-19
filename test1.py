@@ -1,4 +1,4 @@
-# Intentional error: variable 'result' is used before being defined
+# Intentional error: variable 'result' is used before being defined ,
 
 def add_numbers(a, b):
     return a + b
