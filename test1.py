@@ -3,6 +3,6 @@
 def add_numbers(a, b):
     return a + b
 
-print("Sum is:", result)   # <-- ERROR: 'result' is not defined
+print("Sum is the:", result)   # <-- ERROR: 'result' is not defined
 
 result = add_numbers(5, 10)
