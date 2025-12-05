@@ -1,0 +1,777 @@
+{
+  "name": "AutoCode Sage - MVP",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-trigger",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -448,
+        304
+      ],
+      "id": "5155e4d7-497c-441f-b8b9-0c5485ed8177",
+      "name": "Webhook",
+      "webhookId": "22886d27-6218-4682-92fc-23dd2d1aa595"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.pull_request.diff_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3.diff"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -32,
+        128
+      ],
+      "id": "10411482-ed65-4aa1-8986-97d46e526057",
+      "name": "HTTP Request",
+      "credentials": {
+        "githubApi": {
+          "id": "N6NPwLoBZC1sVDFl",
+          "name": "GitHub account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import json\n\n# Loop through items (in case you process multiple PRs at once)\nfor item in _input.all():\n    # 1. Get the raw diff from the previous node\n    raw_diff = item.json.get('data', '')\n\n    # 2. Create the System Prompt (The \"Brain\" instructions)\n    # We ask for PURE JSON output so n8n can parse it automatically later.\n    system_instruction = \"\"\"\n    You are a Senior Python Reviewer. Review the provided code diff for:\n    1. Bugs or Logic Errors\n    2. Security Vulnerabilities\n    3. Style/PEP8 issues\n\n    Output EXACTLY and ONLY a JSON object with this structure:\n    {\n        \"reviews\": [\n            {\n                \"type\": \"bug|security|style\",\n                \"line\": <line_number_from_diff>,\n                \"suggestion\": \"<brief_actionable_advice>\"\n            }\n        ]\n    }\n    If the code is perfect, return {\"reviews\": []}.\n    \"\"\"\n\n    # 3. Create the User Message\n    user_message = f\"Here is the diff to review:\\n\\n{raw_diff}\"\n\n    # 4. Save formatted data for the next node\n    # We return the \"messages\" array ready for the API\n    item.json['ai_payload'] = {\n        \"inputs\": f\"<|system|>\\n{system_instruction}\\n<|user|>\\n{user_message}\\n<|assistant|>\",\n        \"parameters\": {\n            \"return_full_text\": False,\n            \"max_new_tokens\": 500,\n            \"temperature\": 0.2\n        }\n    }\n\nreturn _input.all()"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        128
+      ],
+      "id": "01879924-8d01-46a6-9d9b-6d2760c5739c",
+      "name": "Code in Python (Beta)"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import re\n\n# Initialize list for comments\nall_comments = []\n\n# Loop through the input (in case of batches)\nfor item in _input.all():\n    # 1. Get the raw text output from the AI\n    # (We use .get() to avoid errors if the key is missing)\n    ai_text = item.json.get('text', '')\n\n    # 2. Extract specific AI feedback using Regex\n    # We look for lines containing \"# <--\" and capture the message\n    # Pattern: \"# <--\" followed by any text until the end of the line\n    matches = re.findall(r'# <-- (.*)', ai_text)\n\n    if matches:\n        # If we found matches, format them as a list\n        bullet_points = \"\\n\".join([f\"- ⚠️ {m.strip()}\" for m in matches])\n        summary = f\"### 🤖 AutoCode Sage Review\\nI found the following potential issues:\\n\\n{bullet_points}\"\n        all_comments.append(summary)\n    else:\n        # Fallback if the AI just rewrote code without specific flags\n        all_comments.append(\"Review complete. No critical logic errors explicitly flagged.\")\n\n# 3. Output the clean summary for the next node\nreturn [{\"json\": {\"review_body\": comment}} for comment in all_comments]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        144
+      ],
+      "id": "55abcb3c-9486-45ef-b7ab-77c8c68b7266",
+      "name": "Code in Python (Beta)1"
+    },
+    {
+      "parameters": {
+        "resource": "review",
+        "owner": {
+          "__rl": true,
+          "value": "syed-mohsin-s",
+          "mode": "list"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "AutoCode_Sage",
+          "mode": "list",
+          "cachedResultName": "AutoCode_Sage",
+          "cachedResultUrl": "https://github.com/syed-mohsin-s/AutoCode_Sage"
+        },
+        "pullRequestNumber": "={{ $('Webhook').item.json.body.number }}",
+        "event": "comment",
+        "body": "={{ $json.review_body }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        1008,
+        -64
+      ],
+      "id": "fb04abff-f6bc-4c3f-ad84-991bb46badc5",
+      "name": "Create a review",
+      "webhookId": "97b486ee-6953-479f-9b6b-05bcdf204e04",
+      "credentials": {
+        "githubApi": {
+          "id": "N6NPwLoBZC1sVDFl",
+          "name": "GitHub account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "ai_reviews",
+          "mode": "list",
+          "cachedResultName": "ai_reviews"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "repo_name": "={{ $('Webhook').item.json.body.pull_request.head.repo.full_name }}",
+            "pr_number": "={{ $('Webhook').item.json.body.number }}",
+            "diff_snippet": "={{ $('Code in Python (Beta)').item.json.data }}",
+            "ai_raw_response": "={{ $json.review_body }}",
+            "id": "={{ $('If').item.json.body.pull_request.id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "repo_name",
+              "displayName": "repo_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pr_number",
+              "displayName": "pr_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "commit_sha",
+              "displayName": "commit_sha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "diff_snippet",
+              "displayName": "diff_snippet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_raw_response",
+              "displayName": "ai_raw_response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "parsed_suggestion",
+              "displayName": "parsed_suggestion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "human_feedback",
+              "displayName": "human_feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "model_version",
+              "displayName": "model_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        960,
+        288
+      ],
+      "id": "af57aa54-9011-47ff-ae7a-247ef3546ee4",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "YTkmVMXgrtk8c3WU",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "895f90cb-2bc1-4f21-8ec1-138803723803",
+              "leftValue": "={{ $json.body.pull_request.head.repo.allow_merge_commit }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        304
+      ],
+      "id": "b2942629-efda-46ab-b3d9-94b1c7527c00",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "review",
+        "owner": {
+          "__rl": true,
+          "value": "syed-mohsin-s",
+          "mode": "list",
+          "cachedResultName": "syed-mohsin-s",
+          "cachedResultUrl": "https://github.com/syed-mohsin-s"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "AutoCode_Sage",
+          "mode": "list",
+          "cachedResultName": "AutoCode_Sage",
+          "cachedResultUrl": "https://github.com/syed-mohsin-s/AutoCode_Sage"
+        },
+        "pullRequestNumber": "={{ $('Webhook').item.json.body.number }}",
+        "event": "comment",
+        "body": "Please fix conflicts",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1.1,
+      "position": [
+        -32,
+        400
+      ],
+      "id": "a12c4782-8cd4-4d12-b841-5e9da40cac51",
+      "name": "Create a review1",
+      "webhookId": "1d050860-4fdb-4179-998c-7979358ce700",
+      "credentials": {
+        "githubApi": {
+          "id": "N6NPwLoBZC1sVDFl",
+          "name": "GitHub account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.pull_request._links.review_comments.href }}",
+                    "rightValue": "!accept-sage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "f923c44a-3560-4e6b-8865-d368e4990d77"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "3dd119ae-66f5-4106-b550-521501ca8795",
+                    "leftValue": "={{ $json.body.pull_request._links.review_comments.href }}",
+                    "rightValue": "!reject-sage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -160,
+        608
+      ],
+      "id": "f6ba327b-7095-4a80-97df-92bfc7df81d3",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "comment = _input.item.json.get('comment', {}).get('body', '').lower()\n\nfeedback_label = None\nif '!accept-sage' in comment:\n    feedback_label = 'accepted'\nelif '!reject-sage' in comment:\n    feedback_label = 'rejected'\n\n# Only return if we found a valid command\nif feedback_label:\n    return [{'json': {'feedback': feedback_label, 'pr_number': _input.item.json['issue']['number']}}]\nelse:\n    return [] # Stop the workflow"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        608
+      ],
+      "id": "27680576-b1e4-4f33-bbf4-b0a0b542a57e",
+      "name": "Code in Python (Beta)2"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "ai_reviews",
+          "mode": "list",
+          "cachedResultName": "ai_reviews"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": 0,
+            "pr_number": "={{ $('Webhook').item.json.body.number }}",
+            "human_feedback": "{{ $json.feedback }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "repo_name",
+              "displayName": "repo_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "pr_number",
+              "displayName": "pr_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "commit_sha",
+              "displayName": "commit_sha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "diff_snippet",
+              "displayName": "diff_snippet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "ai_raw_response",
+              "displayName": "ai_raw_response",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "parsed_suggestion",
+              "displayName": "parsed_suggestion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "human_feedback",
+              "displayName": "human_feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "model_version",
+              "displayName": "model_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        544,
+        608
+      ],
+      "id": "c44c41f5-1ca0-40f7-bd03-3fe69fe546aa",
+      "name": "Insert or update rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "YTkmVMXgrtk8c3WU",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_payload }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        416,
+        128
+      ],
+      "id": "f99eb02c-834a-4951-823b-566ceb517153",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-pro",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        288,
+        336
+      ],
+      "id": "e00c2bfb-69d8-4999-9eaa-02f3cc2248f2",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gZYjoHAIUGo1hh9u",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        432,
+        336
+      ],
+      "id": "d954c800-6d93-4f85-9355-9fa3760b2dea",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "owner": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "repository": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "events": [
+          "pull_request_review_comment"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        512
+      ],
+      "id": "fb35d3e9-2704-44e4-befc-3a98d23fef30",
+      "name": "Github Trigger",
+      "webhookId": "c49037bc-dfb4-4b35-bef1-052b0a39a61d",
+      "credentials": {
+        "githubApi": {
+          "id": "N6NPwLoBZC1sVDFl",
+          "name": "GitHub account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Beta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Beta)": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Beta)1": {
+      "main": [
+        [
+          {
+            "node": "Create a review",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert rows in a table": {
+      "main": [
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create a review1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Beta)2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in Python (Beta)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in Python (Beta)2": {
+      "main": [
+        [
+          {
+            "node": "Insert or update rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in Python (Beta)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Github Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3eda87a7-7144-4ccd-a1cb-eeabf98972c2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dccc4f1f6a3685044778c04e2c661ed34ff00d0ed443947cf8fbd66cc5ee0291"
+  },
+  "id": "WD4Tc1DrgqS6I5mc",
+  "tags": []
+}
